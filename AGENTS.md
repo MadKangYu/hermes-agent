@@ -336,6 +336,26 @@ Activate with `/skin cyberpunk` or `display.skin: cyberpunk` in config.yaml.
 ---
 
 ## Important Policies
+### Public vs Private Repository Routing
+
+- If the user says `web 참고`, `main github`, `main`, or `공식 루트`, treat the **official public GitHub root** as the only analysis target.
+- In that mode, exclude private mirrors, `private-main`, and private forks from analysis.
+- Open private repositories only for modification-oriented work:
+  - private sync / push
+  - private state debugging
+  - private configuration migration
+  - checking private canonical history
+- Do not mix analysis and implementation scopes. Investigation uses the public root; modification work may open the private side.
+
+### Git Branch Terminology
+
+- `origin`, `private` = remote names
+- the actual `main` branch that exists in the public/private repository = remote branch
+- `origin/main`, `private/main` = local remote-tracking refs recording those remote branches
+- local `main`, local `private-main` = local branches
+
+When explaining Git state, avoid ambiguous phrases like `remote main`. Prefer precise layer-specific terms such as `public remote branch main`, `private remote branch main`, `origin/main`, `private/main`, `local branch main`, and `local branch private-main`.
+
 ### Prompt Caching Must Not Break
 
 Hermes-Agent ensures caching remains valid throughout a conversation. **Do NOT implement changes that would:**
