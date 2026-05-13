@@ -1,0 +1,44 @@
+name: Agentic Unit Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/plans/**/*.md'
+      - 'docs/agentic-engineering-unit.md'
+      - 'AGENTS.md'
+      - 'scripts/check_agentic_unit.py'
+      - 'tests/scripts/test_check_agentic_unit.py'
+      - '.github/workflows/agentic-unit-check.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/plans/**/*.md'
+      - 'docs/agentic-engineering-unit.md'
+      - 'AGENTS.md'
+      - 'scripts/check_agentic_unit.py'
+      - 'tests/scripts/test_check_agentic_unit.py'
+      - '.github/workflows/agentic-unit-check.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agentic-unit-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: '3.11'
+
+      - name: Validate agentic unit ledgers
+        run: python scripts/check_agentic_unit.py --discover docs/plans

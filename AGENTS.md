@@ -66,6 +66,112 @@ hermes-agent/
 `gateway.log` when running the gateway. Profile-aware via `get_hermes_home()`.
 Browse with `hermes logs [--follow] [--level ...] [--session ...]`.
 
+## Agentic Engineering Unit Contract
+
+Hermes Agent work is operational infrastructure. Any non-trivial task that
+touches core agent behavior, CLI, gateway/platform adapters, plugins, skills,
+profiles, cron, kanban, TUI/ACP, website docs, or external work surfaces must
+be framed as an **agentic engineering unit** before execution and closed with
+evidence. The reusable template and examples live in
+`docs/agentic-engineering-unit.md`.
+
+Minimum unit record:
+
+```text
+unit_id:
+surface: core | cli | gateway | platform | plugin | skill | profile | cron | kanban | tui | acp | website | docs | test
+goal:
+current_state:
+authority_boundary:
+verification_criteria:
+log_location:
+completion_condition:
+contract_category:
+status:
+```
+
+Field rules:
+- `unit_id` is a stable ASCII handle that can be reused in logs, plans, commits,
+  and Obsidian notes.
+- `goal` is the concrete outcome, not the next command.
+- `current_state` records the live repo/profile/runtime state that the unit is
+  starting from.
+- `authority_boundary` states exactly what may be changed and what requires
+  explicit user authority.
+- `verification_criteria` names the test, smoke check, browser/CDP proof,
+  gateway dry-run, secret scan, or log check that will prove the claim.
+- `log_location` points to the repo plan, Hermes log, profile memory/session,
+  Obsidian note, issue, or PR where the work can be audited.
+- `completion_condition` is the exact close gate. "Done" is not sufficient.
+- `contract_category` should be one of `api-contract`, `state-contract`,
+  `auth-contract`, `runtime-contract`, `ui-contract`, `data-contract`, or
+  `integration-contract`.
+- `status` uses `planned`, `working`, `blocked`, `verified`, or `closed`.
+
+Lifecycle:
+- Start the unit by creating or updating the relevant `docs/plans/` ledger
+  before substantial edits. If an existing issue, PR, kanban task, or Obsidian
+  note is the source of truth, link it instead of duplicating state.
+- Lock behavior with the smallest contract/invariant test before changing code
+  when the behavior is not already protected. Avoid change-detector tests; use
+  the invariant style described in the Testing section below.
+- Record failed checks as evidence, then either fix and rerun the gate or close
+  the unit as `blocked` with the failed gate and next action.
+- Move to `verified` only after the verification criteria pass. Move to `closed`
+  only after the final report or durable ledger records the result.
+
+Path mapping:
+- Repo plans and task ledgers live under `docs/plans/` unless a more specific
+  project document already exists.
+- Profile-scoped work must name the active `get_hermes_home()` target, usually
+  `~/.hermes/profiles/<profile>/...`, and must not silently write to default
+  `~/.hermes`.
+- Runtime evidence belongs in profile-aware `logs/`, `sessions/`, kanban task
+  history, or a referenced terminal/test transcript.
+- Durable operating knowledge that will be reused outside this repo should also
+  be summarized in the user's Obsidian vault with the verification evidence.
+
+Authority boundaries:
+- Local source, tests, docs, fixtures, and non-secret config templates may be
+  edited inside the active unit scope.
+- Do not mutate `.env`, `auth/`, token stores, live Slack app scopes, admin
+  approvals, external message sends, production gateway deployments, or browser
+  profiles with user data unless the active task explicitly grants that
+  authority.
+- Slack work must keep these gates separate: manifest valid, app installed,
+  config token present, runtime token authenticated, required scopes granted,
+  admin approval complete, dry-run passed, live write approved.
+- Browser/CDP work must verify the target profile, port/listener, page state,
+  and visible result. A browser window being open is not evidence by itself.
+
+Verification matrix:
+- Core agent, tools, memory, provider, and CLI changes: use
+  `scripts/run_tests.sh <target>` for targeted checks and `scripts/run_tests.sh`
+  for broad or cross-cutting changes. Do not call `pytest` directly except under
+  the explicit fallback rules in the Testing section below.
+- Gateway/platform changes: run adapter-specific tests and prove token-lock,
+  queue, approval, and stop/control-command behavior when those paths are in
+  scope.
+- Profile changes: prove the active `HERMES_HOME`/profile path and inspect the
+  profile-aware log/session location.
+- Docs-only changes: run `git diff --check`, verify referenced paths, and scan
+  that no secrets or tokens were introduced.
+- Website or browser-visible changes: verify listener/HTTP status before
+  browser work, then capture body-marker or screenshot evidence.
+- Contract-regression changes: prefer invariant tests that protect behavior
+  across future implementations, not snapshots of expected routine churn.
+- Unit-ledger markdown can be checked with
+  `.venv/bin/python scripts/check_agentic_unit.py <path>` or the active venv's
+  `python`. This validates only the unit record shape; it does not replace the
+  task-specific verification criteria.
+- CI runs `.github/workflows/agentic-unit-check.yml` for `docs/plans/**` and
+  validator changes. It discovers markdown files that contain a concrete
+  `unit_id:` line and validates those unit ledgers.
+
+Closeout rule: do not claim a Hermes unit is complete unless the close gate is
+met, the log location is recorded, and failed/abandoned paths are captured as a
+blocker or rejected alternative.
+
 ## File Dependency Chain
 
 ```
