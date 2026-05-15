@@ -270,10 +270,12 @@ _SLACK_WORKSPACE_TEAM_ID_ENV_VARS = (
     "SLACK_RUNTIME_WORKSPACE_TEAM_ID",
     "MADSTAMP_HERMES_TARGET_RUNTIME_AUTH_TEAM_ID",
 )
+_SLACK_WORKSPACE_TEAM_IDS_ENV_VAR = "SLACK_WORKSPACE_TEAM_IDS"
+_SLACK_DEBUG_ROUTING_ENV_VAR = "SLACK_DEBUG_ROUTING"
 
 
 def _resolve_runtime_team_id(auth_response: Dict[str, Any]) -> str:
-    """Return the workspace team ID used for workspace-scoped Slack Web API calls."""
+    """Return the primary workspace team ID for workspace-scoped Slack Web API calls."""
     team_id = str(auth_response.get("team_id") or "")
     enterprise_id = str(auth_response.get("enterprise_id") or "")
     if team_id.startswith("T") and team_id != enterprise_id:
@@ -285,6 +287,38 @@ def _resolve_runtime_team_id(auth_response: Dict[str, Any]) -> str:
             return candidate
 
     return ""
+
+
+def _resolve_runtime_team_ids(auth_response: Dict[str, Any]) -> List[str]:
+    """Return all workspace team IDs this adapter manages.
+
+    Enterprise org-deploy installs serve multiple workspaces under one bot
+    token. Set ``SLACK_WORKSPACE_TEAM_IDS`` to a comma-separated list of
+    T-prefix workspace IDs to fan out workspace-scoped API calls.
+
+    Resolution order:
+    1. ``SLACK_WORKSPACE_TEAM_IDS`` env (comma-separated T-prefix IDs)
+    2. Single workspace from ``_resolve_runtime_team_id`` (backwards compat)
+    """
+    plural = os.environ.get(_SLACK_WORKSPACE_TEAM_IDS_ENV_VAR, "").strip()
+    if plural:
+        ids = [tid.strip() for tid in plural.split(",") if tid.strip().startswith("T")]
+        seen: set = set()
+        unique_ids: List[str] = []
+        for tid in ids:
+            if tid not in seen:
+                seen.add(tid)
+                unique_ids.append(tid)
+        if unique_ids:
+            return unique_ids
+
+    single = _resolve_runtime_team_id(auth_response)
+    return [single] if single else []
+
+
+def _slack_debug_routing_enabled() -> bool:
+    """Whether to emit verbose routing logs for incoming Slack events."""
+    return os.environ.get(_SLACK_DEBUG_ROUTING_ENV_VAR, "").lower() in ("1", "true", "yes", "on")
 
 
 def _resolve_slack_proxy_url() -> Optional[str]:
@@ -597,25 +631,36 @@ class SlackAdapter(BasePlatformAdapter):
                 _apply_slack_proxy(client, proxy_url)
                 auth_response = await client.auth_test()
                 auth_team_id = auth_response.get("team_id", "")
-                team_id = _resolve_runtime_team_id(auth_response)
+                team_ids = _resolve_runtime_team_ids(auth_response)
+                primary_team_id = team_ids[0] if team_ids else ""
                 bot_user_id = auth_response.get("user_id", "")
                 bot_name = auth_response.get("user", "unknown")
                 team_name = auth_response.get("team", "unknown")
 
-                if team_id and team_id != auth_team_id:
+                if primary_team_id and primary_team_id != auth_team_id:
                     logger.info(
                         "[Slack] Using workspace team %s for org-level auth team %s",
-                        team_id, auth_team_id,
+                        primary_team_id, auth_team_id,
                     )
 
-                if team_id:
-                    self._team_clients[team_id] = client
-                    self._team_bot_user_ids[team_id] = bot_user_id
+                if team_ids:
+                    # Org-deploy installs serve multiple workspaces with one bot token.
+                    # Register the same client under each workspace team_id so
+                    # workspace-scoped API calls can fan out per-workspace.
+                    for tid in team_ids:
+                        self._team_clients[tid] = client
+                        self._team_bot_user_ids[tid] = bot_user_id
+                    if len(team_ids) > 1:
+                        logger.info(
+                            "[Slack] Org-deploy multi-workspace: registered %d workspaces %s",
+                            len(team_ids), team_ids,
+                        )
                 else:
                     logger.warning(
                         "[Slack] Could not resolve workspace team ID for auth team %s; "
-                        "set one of %s to enable workspace-scoped API calls such as channel directory enumeration",
+                        "set %s (comma-separated) or one of %s to enable workspace-scoped API calls",
                         auth_team_id or "unknown",
+                        _SLACK_WORKSPACE_TEAM_IDS_ENV_VAR,
                         ", ".join(_SLACK_WORKSPACE_TEAM_ID_ENV_VARS),
                     )
 
@@ -625,7 +670,7 @@ class SlackAdapter(BasePlatformAdapter):
 
                 logger.info(
                     "[Slack] Authenticated as @%s in workspace %s (team: %s)",
-                    bot_name, team_name, team_id or auth_team_id or "unknown",
+                    bot_name, team_name, primary_team_id or auth_team_id or "unknown",
                 )
 
             # Register message event handler
