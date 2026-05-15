@@ -93,6 +93,35 @@ def _redirect_cache(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# TestSlackEnterpriseTeamResolution
+# ---------------------------------------------------------------------------
+
+class TestSlackEnterpriseTeamResolution:
+    def test_auth_team_id_is_used_for_workspace_install(self):
+        auth = {"team_id": "T_WORKSPACE", "enterprise_id": "E_ORG"}
+
+        with patch.dict(os.environ, {}, clear=False):
+            assert _slack_mod._resolve_runtime_team_id(auth) == "T_WORKSPACE"
+
+    def test_workspace_env_overrides_enterprise_auth_team_id(self):
+        auth = {"team_id": "E_ORG", "enterprise_id": "E_ORG"}
+
+        with patch.dict(os.environ, {"SLACK_WORKSPACE_TEAM_ID": "T_WORKSPACE"}):
+            assert _slack_mod._resolve_runtime_team_id(auth) == "T_WORKSPACE"
+
+    def test_org_auth_without_workspace_env_does_not_return_enterprise_id(self):
+        auth = {"team_id": "E_ORG", "enterprise_id": "E_ORG"}
+
+        with patch.dict(os.environ, {
+            "SLACK_WORKSPACE_TEAM_ID": "",
+            "SLACK_WORKSPACE_GRANT_TEAM_ID": "",
+            "SLACK_RUNTIME_WORKSPACE_TEAM_ID": "",
+            "MADSTAMP_HERMES_TARGET_RUNTIME_AUTH_TEAM_ID": "",
+        }):
+            assert _slack_mod._resolve_runtime_team_id(auth) == ""
+
+
+# ---------------------------------------------------------------------------
 # TestSlashCommandSessionIsolation
 # ---------------------------------------------------------------------------
 

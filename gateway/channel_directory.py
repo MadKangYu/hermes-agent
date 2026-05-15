@@ -162,10 +162,17 @@ async def _build_slack(adapter) -> List[Dict[str, Any]]:
     seen_ids: set = set()
 
     for team_id, client in team_clients.items():
+        if not str(team_id).startswith("T"):
+            logger.warning(
+                "Channel directory: skipping Slack channel enumeration for non-workspace team id %s",
+                team_id,
+            )
+            continue
         try:
             cursor: Optional[str] = None
             for _page in range(20):  # safety cap on pagination
                 response = await client.users_conversations(
+                    team_id=team_id,
                     types="public_channel,private_channel",
                     exclude_archived=True,
                     limit=200,

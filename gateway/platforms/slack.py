@@ -264,6 +264,28 @@ _SLACK_PROXY_HOSTS = (
     "wss-primary.slack.com",
 )
 
+_SLACK_WORKSPACE_TEAM_ID_ENV_VARS = (
+    "SLACK_WORKSPACE_TEAM_ID",
+    "SLACK_WORKSPACE_GRANT_TEAM_ID",
+    "SLACK_RUNTIME_WORKSPACE_TEAM_ID",
+    "MADSTAMP_HERMES_TARGET_RUNTIME_AUTH_TEAM_ID",
+)
+
+
+def _resolve_runtime_team_id(auth_response: Dict[str, Any]) -> str:
+    """Return the workspace team ID used for workspace-scoped Slack Web API calls."""
+    team_id = str(auth_response.get("team_id") or "")
+    enterprise_id = str(auth_response.get("enterprise_id") or "")
+    if team_id.startswith("T") and team_id != enterprise_id:
+        return team_id
+
+    for env_name in _SLACK_WORKSPACE_TEAM_ID_ENV_VARS:
+        candidate = os.environ.get(env_name, "").strip()
+        if candidate.startswith("T"):
+            return candidate
+
+    return ""
+
 
 def _resolve_slack_proxy_url() -> Optional[str]:
     """Resolve a proxy URL that Slack SDK clients can safely use."""
@@ -574,13 +596,28 @@ class SlackAdapter(BasePlatformAdapter):
                 client = AsyncWebClient(token=token)
                 _apply_slack_proxy(client, proxy_url)
                 auth_response = await client.auth_test()
-                team_id = auth_response.get("team_id", "")
+                auth_team_id = auth_response.get("team_id", "")
+                team_id = _resolve_runtime_team_id(auth_response)
                 bot_user_id = auth_response.get("user_id", "")
                 bot_name = auth_response.get("user", "unknown")
                 team_name = auth_response.get("team", "unknown")
 
-                self._team_clients[team_id] = client
-                self._team_bot_user_ids[team_id] = bot_user_id
+                if team_id and team_id != auth_team_id:
+                    logger.info(
+                        "[Slack] Using workspace team %s for org-level auth team %s",
+                        team_id, auth_team_id,
+                    )
+
+                if team_id:
+                    self._team_clients[team_id] = client
+                    self._team_bot_user_ids[team_id] = bot_user_id
+                else:
+                    logger.warning(
+                        "[Slack] Could not resolve workspace team ID for auth team %s; "
+                        "set one of %s to enable workspace-scoped API calls such as channel directory enumeration",
+                        auth_team_id or "unknown",
+                        ", ".join(_SLACK_WORKSPACE_TEAM_ID_ENV_VARS),
+                    )
 
                 # First token sets the primary bot_user_id (backward compat)
                 if self._bot_user_id is None:
@@ -588,7 +625,7 @@ class SlackAdapter(BasePlatformAdapter):
 
                 logger.info(
                     "[Slack] Authenticated as @%s in workspace %s (team: %s)",
-                    bot_name, team_name, team_id,
+                    bot_name, team_name, team_id or auth_team_id or "unknown",
                 )
 
             # Register message event handler

@@ -503,6 +503,16 @@ This file is a JSON object mapping team IDs to token entries:
 
 Tokens from this file are merged with any tokens specified via `SLACK_BOT_TOKEN`. Duplicate tokens are automatically deduplicated.
 
+### Enterprise Grid org-level tokens
+
+Slack org-level tokens can authenticate as the Enterprise org (`E...`) instead of a concrete workspace (`T...`). Workspace-scoped Web API calls such as channel directory enumeration require a workspace team ID. If startup logs say Hermes could not resolve a workspace team ID, set:
+
+```bash
+SLACK_WORKSPACE_TEAM_ID=T01ABC2DEF3
+```
+
+The value must be the target workspace ID, not the Enterprise org ID. Workspace-level bot tokens normally do not need this because `auth.test` already returns the workspace `team_id`.
+
 ### How it works
 
 - The **first token** in the list is the primary token, used for the Socket Mode connection (AsyncApp).

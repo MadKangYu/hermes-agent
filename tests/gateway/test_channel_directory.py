@@ -400,6 +400,27 @@ class TestBuildSlack:
         assert types["C0B0QV5434G"] == "channel"
         assert types["G123ABCDEF"] == "private"
         client.users_conversations.assert_awaited_once()
+        assert client.users_conversations.await_args.kwargs["team_id"] == "T1"
+
+    def test_non_workspace_team_id_falls_back_to_sessions(self, tmp_path):
+        sessions_path = tmp_path / "sessions" / "sessions.json"
+        sessions_path.parent.mkdir(parents=True)
+        sessions_path.write_text(json.dumps({
+            "s1": {"origin": {"platform": "slack", "chat_id": "D123", "chat_name": "Alice"}},
+        }))
+        client = _make_slack_client([
+            {
+                "ok": True,
+                "channels": [{"id": "C_SHOULD_NOT_CALL", "name": "bad", "is_private": False}],
+                "response_metadata": {},
+            },
+        ])
+
+        with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
+            entries = asyncio.run(_build_slack(_make_slack_adapter({"E_ORG": client})))
+
+        assert entries == [{"id": "D123", "name": "Alice", "type": "dm", "thread_id": None}]
+        client.users_conversations.assert_not_awaited()
 
     def test_paginates_via_response_metadata_cursor(self, tmp_path):
         client = _make_slack_client([
@@ -431,7 +452,7 @@ class TestBuildSlack:
             },
         ])
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
-            entries = asyncio.run(_build_slack(_make_slack_adapter({"BAD": bad, "GOOD": good})))
+            entries = asyncio.run(_build_slack(_make_slack_adapter({"T_BAD": bad, "T_GOOD": good})))
 
         assert {e["id"] for e in entries} == {"C999"}
 
