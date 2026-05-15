@@ -114,3 +114,47 @@ def test_bundled_catalog_explains_missing_local_skills(gen_module):
     result = gen_module.build_catalog_md_bundled([])
     assert "respects local deletions and user edits" in result
     assert "hermes skills reset <name> --restore" in result
+
+
+def test_catalog_links_do_not_include_docusaurus_base_url(gen_module):
+    """Generated docs must not hard-code /docs/ because baseUrl already adds it."""
+    entries = [
+        (
+            {
+                "source_kind": "bundled",
+                "category": "software-development",
+                "sub": None,
+                "slug": "debugging",
+                "rel_path": "software-development/debugging",
+            },
+            {"frontmatter": {"name": "debugging", "description": "Debug things."}},
+        ),
+        (
+            {
+                "source_kind": "optional",
+                "category": "research",
+                "sub": None,
+                "slug": "search",
+                "rel_path": "research/search",
+            },
+            {"frontmatter": {"name": "search", "description": "Search things."}},
+        ),
+    ]
+
+    bundled = gen_module.build_catalog_md_bundled(entries)
+    optional = gen_module.build_catalog_md_optional(entries)
+
+    assert "](/docs/" not in bundled
+    assert "](/docs/" not in optional
+    assert "](/user-guide/skills/bundled/software-development/software-development-debugging)" in bundled
+    assert "](/user-guide/skills/optional/research/research-search)" in optional
+
+
+def test_skill_body_docs_root_links_are_normalized(gen_module):
+    """SKILL.md links copied from the website should drop the /docs base prefix."""
+    meta = {"source_kind": "bundled", "rel_path": "software-development/debugging"}
+    body = "See [Skills](/docs/user-guide/features/skills#skills-hub)."
+
+    result = gen_module.rewrite_relative_links(body, meta)
+
+    assert result == "See [Skills](/user-guide/features/skills#skills-hub)."
