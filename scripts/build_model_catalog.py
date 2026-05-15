@@ -25,7 +25,9 @@ from __future__ import annotations
 import json
 import os
 import sys
+from argparse import ArgumentParser
 from datetime import datetime, timezone
+from typing import Any, Sequence
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO_ROOT)
@@ -78,7 +80,19 @@ def build_catalog() -> dict:
     }
 
 
-def main() -> int:
+def _normalise_for_check(catalog: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy suitable for drift checks.
+
+    ``updated_at`` is intentionally generated at write time, so check mode
+    compares the provider/model payload and metadata without treating the
+    timestamp as drift.
+    """
+    normalized = json.loads(json.dumps(catalog, sort_keys=True))
+    normalized.pop("updated_at", None)
+    return normalized
+
+
+def write_catalog() -> int:
     catalog = build_catalog()
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
     with open(OUTPUT_PATH, "w", encoding="utf-8") as fh:
@@ -89,6 +103,47 @@ def main() -> int:
     for provider, block in catalog["providers"].items():
         print(f"  {provider}: {len(block['models'])} models")
     return 0
+
+
+def check_catalog() -> int:
+    expected = build_catalog()
+    try:
+        with open(OUTPUT_PATH, encoding="utf-8") as fh:
+            current = json.load(fh)
+    except FileNotFoundError:
+        print(
+            f"{OUTPUT_PATH} is missing; run python scripts/build_model_catalog.py",
+            file=sys.stderr,
+        )
+        return 1
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"{OUTPUT_PATH} is unreadable: {exc}", file=sys.stderr)
+        return 1
+
+    if _normalise_for_check(current) != _normalise_for_check(expected):
+        print(
+            f"{OUTPUT_PATH} is stale; run python scripts/build_model_catalog.py",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"{OUTPUT_PATH} is up to date")
+    for provider, block in expected["providers"].items():
+        print(f"  {provider}: {len(block['models'])} models")
+    return 0
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="verify the checked-in catalog matches the curated model lists without rewriting it",
+    )
+    args = parser.parse_args(argv)
+    if args.check:
+        return check_catalog()
+    return write_catalog()
 
 
 if __name__ == "__main__":

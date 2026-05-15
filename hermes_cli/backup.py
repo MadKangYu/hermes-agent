@@ -41,6 +41,13 @@ _EXCLUDED_DIRS = {
                         # session-hash-keyed so they don't port to another machine anyway
 }
 
+# Directory prefixes to skip entirely. Browser CDP profiles are runtime
+# attachment state; backing them up can wedge on live SQLite stores and makes
+# pre-update backups too large to be useful.
+_EXCLUDED_DIR_PREFIXES = (
+    "chrome-cdp",
+)
+
 # File-name suffixes to skip
 _EXCLUDED_SUFFIXES = (
     ".pyc",
@@ -72,6 +79,8 @@ def _should_exclude(rel_path: Path) -> bool:
     # Any path component matches an excluded dir name
     for part in parts:
         if part in _EXCLUDED_DIRS:
+            return True
+        if any(part.startswith(prefix) for prefix in _EXCLUDED_DIR_PREFIXES):
             return True
 
     name = rel_path.name

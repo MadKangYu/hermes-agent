@@ -98,6 +98,13 @@ class TestShouldExclude:
         assert _should_exclude(Path("checkpoints/abc123/trajectory.json"))
         assert _should_exclude(Path("checkpoints/deadbeef/step_0001.json"))
 
+    def test_excludes_chrome_cdp_runtime_profiles(self):
+        """Chrome CDP profiles are runtime attachment state, not backup data."""
+        from hermes_cli.backup import _should_exclude
+        assert _should_exclude(Path("chrome-cdp-madstamp/Default/first_party_sets.db"))
+        assert _should_exclude(Path("profiles/madstamp/chrome-cdp/Default/Cookies"))
+        assert _should_exclude(Path("profiles/madstamp/chrome-cdp-admin/Default/History"))
+
     def test_excludes_backups_dir(self):
         """backups/ is excluded so pre-update backups don't nest exponentially."""
         from hermes_cli.backup import _should_exclude
